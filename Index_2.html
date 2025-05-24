@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mode Select Pong</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Courier New', monospace;
+    }
+    canvas {
+      display: none;
+    }
+    .menu {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, #222, #000);
+      color: white;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    .menu h1 {
+      font-size: 2.5em;
+      margin-bottom: 40px;
+    }
+    .menu button {
+      padding: 15px 30px;
+      margin: 10px;
+      font-size: 1.2em;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      background: #0ff;
+      color: #000;
+      font-weight: bold;
+    }
+    #scoreboard {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 18px;
+      z-index: 2;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="menu" id="menu">
+  <h1>🎮 Pong Game</h1>
+  <button onclick="startGame('computer')">Play vs Computer</button>
+  <button onclick="startGame('multiplayer')">Multiplayer</button>
+</div>
+
+<div id="scoreboard">Score: 0 | High Score: 0</div>
+<canvas id="pong"></canvas>
+
+<script>
+  const canvas = document.getElementById("pong");
+  const ctx = canvas.getContext("2d");
+  const scoreEl = document.getElementById("scoreboard");
+  const menu = document.getElementById("menu");
+
+  let w = window.innerWidth, h = window.innerHeight;
+  canvas.width = w;
+  canvas.height = h;
+
+  const paddleHeight = h / 5, paddleWidth = 15;
+  const player1 = { x: 0, y: h/2 - paddleHeight/2, w: paddleWidth, h: paddleHeight, dy: 20 };
+  const player2 = { x: w - paddleWidth, y: h/2 - paddleHeight/2, w: paddleWidth, h: paddleHeight, dy: 20 };
+  const ball = { x: w/2, y: h/2, r: 10, dx: 6, dy: 6, speed: 6 };
+
+  let score = 0;
+  let highScore = localStorage.getItem("pongHighScore") || 0;
+  let mode = 'computer';
+  let keys = {};
+  let gameRunning = false;
+
+  document.addEventListener("keydown", e => keys[e.key] = true);
+  document.addEventListener("keyup", e => keys[e.key] = false);
+
+  canvas.addEventListener("touchstart", e => {
+    const touchY = e.touches[0].clientY;
+    if (mode === "computer") {
+      if (touchY < h / 2) player1.y -= player1.dy;
+      else player1.y += player1.dy;
+    } else {
+      if (e.touches[0].clientX < w / 2)
+        player1.y += touchY < h / 2 ? -player1.dy : player1.dy;
+      else
+        player2.y += touchY < h / 2 ? -player2.dy : player2.dy;
+    }
+  });
+
+  function startGame(selectedMode) {
+    mode = selectedMode;
+    score = 0;
+    ball.speed = 6;
+    resetBall();
+    menu.style.display = "none";
+    canvas.style.display = "block";
+    scoreEl.style.display = "block";
+    gameRunning = true;
+    requestAnimationFrame(loop);
+  }
+
+  function drawRect(p, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+  }
+
+  function drawBall() {
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
+    ctx.fillStyle = "#0ff";
+    ctx.fill();
+    ctx.closePath();
+  }
+
+  function draw() {
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, 0, w, h);
+    drawRect(player1, "#0f0");
+    drawRect(player2, "#f0f");
+    drawBall();
+  }
+
+  function update() {
+    ball.x += ball.dx;
+    ball.y += ball.dy;
+
+    if (keys["ArrowUp"]) player2.y -= player2.dy;
+    if (keys["ArrowDown"]) player2.y += player2.dy;
+    if (mode === "multiplayer") {
+      if (keys["w"] || keys["W"]) player1.y -= player1.dy;
+      if (keys["s"] || keys["S"]) player1.y += player1.dy;
+    }
+
+    // Simple AI
+    if (mode === "computer") {
+      player2.y += (ball.y - (player2.y + player2.h / 2)) * 0.08;
+    }
+
+    // Bounce on top/bottom
+    if (ball.y < 0 || ball.y > h) ball.dy *= -1;
+
+    // Paddle collisions
+    if (checkCollision(player1)) {
+      ball.dx *= -1;
+      ball.speed += 0.3;
+      score++;
+    }
+
+    if (checkCollision(player2)) {
+      ball.dx *= -1;
+      ball.speed += 0.3;
+      if (mode === "computer") score++;
+    }
+
+    // Out of bounds
+    if (ball.x < 0 || ball.x > w) {
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem("pongHighScore", highScore);
+      }
+      score = 0;
+      ball.speed = 6;
+      resetBall();
+    }
+
+    scoreEl.innerText = `Score: ${score} | High Score: ${highScore}`;
+  }
+
+  function checkCollision(p) {
+    return ball.x - ball.r < p.x + p.w &&
+           ball.x + ball.r > p.x &&
+           ball.y + ball.r > p.y &&
+           ball.y - ball.r < p.y + p.h;
+  }
+
+  function resetBall() {
+    ball.x = w/2;
+    ball.y = h/2;
+    ball.dx = (Math.random() > 0.5 ? 1 : -1) * ball.speed;
+    ball.dy = (Math.random() > 0.5 ? 1 : -1) * ball.speed;
+  }
+
+  function loop() {
+    if (!gameRunning) return;
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener("resize", () => location.reload());
+</script>
+
+</body>
+</html>
